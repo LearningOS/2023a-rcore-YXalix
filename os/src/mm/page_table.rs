@@ -171,3 +171,38 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     }
     v
 }
+
+
+/// put timeinfo into the a ptr[usize] array with LENGTH= 2
+pub fn translated_timeinfo(token: usize, ptr: *const usize, us: usize) {
+    let page_table = PageTable::from_token(token);
+    let start = ptr as usize;
+
+    let sec =  us / 1_000_000;
+    let usec =  us % 1_000_000;
+
+    // set second first
+    let start_va = VirtAddr::from(start);
+    let mut vpn = start_va.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    vpn.step();
+    let mut end_va: VirtAddr = vpn.into();
+    end_va = end_va.min(VirtAddr::from(start + 8));
+    let secref: &mut [usize] = &mut ppn.get_array()[start_va.page_offset()/8..end_va.page_offset()/8];
+    secref[0] = sec;
+
+    // set usecond
+    let start_va = VirtAddr::from(start + 8);
+    let mut vpn = start_va.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    vpn.step();
+    let mut end_va: VirtAddr = vpn.into();
+    end_va = end_va.min(VirtAddr::from(start + 16));
+    let usecref: &mut [usize] = &mut ppn.get_array()[start_va.page_offset()/8..end_va.page_offset()/8];
+    usecref[0] = usec;
+}
+
+/// put taskinfo into the a ptr[u32] array
+pub fn translated_taskinfo(token: usize, ptr: *const u32, task_info: &TaskInfo) {
+    
+}
