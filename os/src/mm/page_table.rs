@@ -1,5 +1,8 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
+use crate::config::MAX_SYSCALL_NUM;
+use crate::task::{get_current_task_syscall_times, get_current_task_time};
+
 use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -203,6 +206,59 @@ pub fn translated_timeinfo(token: usize, ptr: *const usize, us: usize) {
 }
 
 /// put taskinfo into the a ptr[u32] array
-pub fn translated_taskinfo(token: usize, ptr: *const u32, task_info: &TaskInfo) {
-    
+pub fn translated_taskinfo(token: usize, ptr: *const u32) {
+    let page_table = PageTable::from_token(token);
+
+    // set syscall times
+    let task_sys_calls = get_current_task_syscall_times();
+    let mut start = ptr as usize;
+    let end = start + MAX_SYSCALL_NUM * 4;
+    let mut index = 0;
+    while start < end {
+        let start_va = VirtAddr::from(start);
+        let mut vpn = start_va.floor();
+        let ppn = page_table.translate(vpn).unwrap().ppn();
+        vpn.step();
+        let mut end_va: VirtAddr = vpn.into();
+        end_va = end_va.min(VirtAddr::from(end));
+        if end_va.page_offset() == 0 {
+            // v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..]);
+            let syscallref: &mut [u32] = &mut ppn.get_array()[start_va.page_offset()/4..];
+            for i in 0..syscallref.len() {
+                syscallref[i] = task_sys_calls[index];
+                index += 1;
+                if index >= MAX_SYSCALL_NUM{
+                    break;
+                }
+            }
+        } else {
+            let syscallref: &mut [u32] = &mut ppn.get_array()[start_va.page_offset()/4..end_va.page_offset()/4];
+            for i in 0..task_sys_calls.len() {
+                syscallref[i] = task_sys_calls[i];
+            }
+        }
+        start = end_va.into();
+    }
+
+    let start = ptr as usize + MAX_SYSCALL_NUM * 4 + 8;
+
+    // set task status
+    let start_va = VirtAddr::from(start);
+    let mut vpn = start_va.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    vpn.step();
+    let mut end_va: VirtAddr = vpn.into();
+    end_va = end_va.min(VirtAddr::from(start + 8));
+    let statusref: &mut [usize] = &mut ppn.get_array()[start_va.page_offset()/8..end_va.page_offset()/8];
+    statusref[0] = 2;
+
+    // set time
+    let start_va = VirtAddr::from(ptr as usize + MAX_SYSCALL_NUM * 4);
+    let mut vpn = start_va.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    vpn.step();
+    let mut end_va: VirtAddr = vpn.into();
+    end_va = end_va.min(VirtAddr::from(ptr as usize + 16 + MAX_SYSCALL_NUM * 4));
+    let timeref: &mut [usize] = &mut ppn.get_array()[start_va.page_offset()/8..end_va.page_offset()/8];
+    timeref[0] = get_current_task_time();
 }
