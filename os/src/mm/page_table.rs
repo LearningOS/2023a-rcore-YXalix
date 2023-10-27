@@ -1,7 +1,7 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
-use crate::config::MAX_SYSCALL_NUM;
-use crate::task::{get_current_task_syscall_times, get_current_task_time};
+use crate::config::{MAX_SYSCALL_NUM,PAGE_SIZE};
+use crate::task::{get_current_task_syscall_times, get_current_task_time, get_current_task_id};
 
 use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
@@ -150,6 +150,84 @@ impl PageTable {
     pub fn token(&self) -> usize {
         8usize << 60 | self.root_ppn.0
     }
+}
+
+/// alloc_for_sys_mmap
+pub fn alloc_for_sys_mmap(token: usize, _start: usize, _len: usize, _port: usize) -> isize{
+    let mut page_table = PageTable::from_token(token);
+    // _start 没有按页大小对齐，_port检查
+    if _start & (PAGE_SIZE - 1) != 0  || _port & !0x7 != 0 || _port & 0x7 == 0{
+        return -1;
+    }
+    // 检查是否在[start, start + len)区间内存在已经被映射的页,同时分配映射
+    let mut start = _start;
+    let end = start + _len;
+    let mut result:isize = 0;
+    while start < end {
+        if get_current_task_id() == 16 {
+            println!("alloc_for_sys_mmap: start = {:x}, end = {:x}", start, end);
+        }
+        let start_va = VirtAddr::from(start);
+        let vpn = start_va.floor();
+        let idxs = vpn.indexes();
+        let mut ppn = page_table.root_ppn;
+        for (i, idx) in idxs.iter().enumerate() {
+            let pte = &mut ppn.get_pte_array()[*idx];
+            if i == 2 {
+                if get_current_task_id() == 16 {
+                    println!("alloc_for_sys_mmap: pte = {:x}", pte.bits);
+                }
+                if pte.is_valid() {
+                    result = -1;
+                    return result;
+                }
+                let frame = frame_alloc().unwrap();
+                *pte = PageTableEntry::new(frame.ppn, PTEFlags::V | PTEFlags::R | PTEFlags::W | PTEFlags::U);
+                page_table.frames.push(frame);
+                break;
+            }
+            if !pte.is_valid() {
+                let frame = frame_alloc().unwrap();
+                *pte = PageTableEntry::new(frame.ppn, PTEFlags::V);
+                page_table.frames.push(frame);
+            }
+            ppn = pte.ppn();
+        }
+        start = start + PAGE_SIZE;
+    }
+    result
+}
+
+/// unmap_for_sys_munmap
+pub fn unmap_for_sys_munmap(token: usize, _start: usize, _len: usize) -> isize{
+    let page_table = PageTable::from_token(token);
+    // _start 没有按页大小对齐
+    if _start & (PAGE_SIZE - 1) != 0 {
+        return -1;
+    }
+    // 检查是否在[start, start + len)区间内存在未被映射的页，同时释放映射
+    let mut start = _start;
+    let end = start + _len;
+    let mut result:isize = 0;
+    while start < end {
+        let start_va = VirtAddr::from(start);
+        let vpn = start_va.floor();
+        match page_table.find_pte(vpn) {
+            Some(pte) => {
+                if !pte.is_valid() {
+                    result = -1;
+                    return result;
+                }
+                *pte = PageTableEntry::empty();
+            },
+            None => {
+                result = -1;
+                return result;
+            }
+        }
+        start = start + PAGE_SIZE;
+    }
+    result
 }
 
 /// Translate&Copy a ptr[u8] array with LENGTH len to a mutable u8 Vec through page table

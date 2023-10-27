@@ -16,6 +16,7 @@ mod task;
 
 use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::MemorySet;
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -128,6 +129,7 @@ impl TaskManager {
         inner.tasks[inner.current_task].get_trap_cx()
     }
 
+
     /// Change the current 'Running' task's program break
     pub fn change_current_program_brk(&self, size: i32) -> Option<usize> {
         let mut inner = self.inner.exclusive_access();
@@ -236,4 +238,11 @@ pub fn get_current_task_id() -> usize {
     let inner = TASK_MANAGER.inner.exclusive_access();
     let current = inner.current_task;
     current
+}
+
+/// Get the current task's taskcontrolblock.
+pub fn get_current_task_memeryset() -> *const MemorySet {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    &inner.tasks[current].memory_set as *const MemorySet
 }

@@ -2,12 +2,12 @@
 use crate::{
     config::MAX_SYSCALL_NUM,
     task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,current_user_token,
+        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,current_user_token
     }, 
     timer::get_time_us,
 };
 
-use crate::mm::{translated_timeinfo,translated_taskinfo};
+use crate::mm::{translated_timeinfo,translated_taskinfo,alloc_for_sys_mmap_set,unmap_for_sys_munmap_set};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -64,14 +64,15 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_mmap");
+    // alloc_for_sys_mmap(current_user_token(), _start, _len, _port)
+    alloc_for_sys_mmap_set(_start, _len, _port)
 }
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_munmap!");
+    unmap_for_sys_munmap_set(_start, _len)
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
@@ -82,3 +83,4 @@ pub fn sys_sbrk(size: i32) -> isize {
         -1
     }
 }
+

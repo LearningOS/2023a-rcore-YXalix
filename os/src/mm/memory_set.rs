@@ -8,6 +8,7 @@ use crate::config::{
     KERNEL_STACK_SIZE, MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT_BASE, USER_STACK_SIZE,
 };
 use crate::sync::UPSafeCell;
+use crate::task::{get_current_task_memeryset, get_current_task_id};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -39,6 +40,81 @@ pub struct MemorySet {
     areas: Vec<MapArea>,
 }
 
+/// alloc_for_sys_mmap
+pub fn alloc_for_sys_mmap_set(_start: usize, _len: usize, _port: usize) -> isize {
+    // _start 没有按页大小对齐，_port检查
+    if VirtAddr::from(_start).page_offset() != 0  || _port & !0x7 != 0 || _port & 0x7 == 0{
+        return -1;
+    }
+    // 检查是否在[start, start + len)区间内存在已经被映射的页,同时分配映射
+    let permission = MapPermission::from_bits((_port << 1) as u8).unwrap() | MapPermission::U;
+    let memory_set = get_current_task_memeryset() as *mut MemorySet;
+    let memory_set = unsafe { &mut *memory_set };
+    let mut start = _start;
+    let end = start + _len;
+    while start < end {
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(start + PAGE_SIZE);
+        let vpn = start_va.floor();
+
+        match memory_set.translate(vpn) {
+            Some(pte) => {
+                if pte.is_valid() {
+                    if get_current_task_id() == 17 {
+                        println!("already mapped {:x}", start);
+                    }
+                    return -1;
+                } else {
+                    if memory_set.append_to(start_va, end_va) {
+                        start = start + PAGE_SIZE;
+                    } else {
+                        memory_set.insert_framed_area(start_va, end_va, permission);
+                        memory_set.append_to(start_va, end_va);
+                        start = start + PAGE_SIZE;
+                    }
+                }
+            },
+            None => {
+                memory_set.insert_framed_area(start_va, end_va, permission);
+                memory_set.append_to(start_va, end_va);
+                start = start + PAGE_SIZE;
+            }
+        };
+    }
+    0
+}
+
+/// unmap_for_sys_munmap
+pub fn unmap_for_sys_munmap_set(_start: usize, _len: usize) -> isize {
+    // _start 没有按页大小对齐
+    if _start & (PAGE_SIZE - 1) != 0 {
+        return -1;
+    }
+    // 检查是否在[start, start + len)区间内存在已经被映射的页,同时分配映射
+    let memory_set = get_current_task_memeryset() as *mut MemorySet;
+    let memory_set = unsafe { &mut *memory_set };
+    let mut start = _start;
+    let end = start + _len;
+    while start < end {
+        let start_va = VirtAddr::from(start);
+        match memory_set.translate(start_va.floor()) {
+            Some(pte) => {
+                if pte.is_valid() {
+                    memory_set.shrink_to(start_va, start_va);
+                    start = start + PAGE_SIZE;
+                } else {
+                    return -1;
+                }
+            },
+            None => {
+                return -1;
+            }
+        };
+    }
+    0
+}
+
+
 impl MemorySet {
     /// Create a new empty `MemorySet`.
     pub fn new_bare() -> Self {
@@ -47,6 +123,7 @@ impl MemorySet {
             areas: Vec::new(),
         }
     }
+
     /// Get the page table token
     pub fn token(&self) -> usize {
         self.page_table.token()
@@ -385,6 +462,16 @@ pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {
     let bottom = top - KERNEL_STACK_SIZE;
     (bottom, top)
 }
+
+
+/// remap test in user space
+#[allow(unused)]
+pub fn remap_test_u(){
+    let mut memory_set = get_current_task_memeryset() as *mut MemorySet;
+    let mut memory_set = unsafe { &mut *memory_set };
+
+}
+
 
 /// remap test in kernel space
 #[allow(unused)]

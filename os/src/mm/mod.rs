@@ -16,8 +16,8 @@ pub use address::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use address::{StepByOne, VPNRange};
 pub use frame_allocator::{frame_alloc, FrameTracker};
 pub use memory_set::remap_test;
-pub use memory_set::{kernel_stack_position, MapPermission, MemorySet, KERNEL_SPACE};
-pub use page_table::{translated_byte_buffer, PageTableEntry,translated_timeinfo,translated_taskinfo};
+pub use memory_set::{kernel_stack_position, MapPermission, MemorySet, KERNEL_SPACE,alloc_for_sys_mmap_set,unmap_for_sys_munmap_set};
+pub use page_table::{translated_byte_buffer, PageTableEntry,translated_timeinfo,translated_taskinfo,alloc_for_sys_mmap, unmap_for_sys_munmap};
 use page_table::{PTEFlags, PageTable};
 
 /// initiate heap allocator, frame allocator and kernel space
