@@ -1,7 +1,7 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{TRAP_CONTEXT_BASE,MAX_SYSCALL_NUM, BIG_STRIDE};
 use crate::fs::{File, Stdin, Stdout};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
@@ -71,6 +71,18 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// syscall time of this task
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+
+    /// start running time of this task
+    pub time: usize,
+
+    /// priority of this task
+    pub stride: isize,
+
+    /// pass value of this task
+    pub pass: isize,
 }
 
 impl TaskControlBlockInner {
@@ -93,6 +105,11 @@ impl TaskControlBlockInner {
             self.fd_table.push(None);
             self.fd_table.len() - 1
         }
+    }
+
+    /// Get the reference of the memory set
+    pub fn get_memory_set(&self) -> *const MemorySet {
+        &self.memory_set as *const MemorySet
     }
 }
 
@@ -135,6 +152,10 @@ impl TaskControlBlock {
                     ],
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    time: 0,
+                    stride: BIG_STRIDE / 16,
+                    pass: 0,
                 })
             },
         };
@@ -216,6 +237,10 @@ impl TaskControlBlock {
                     fd_table: new_fd_table,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    time: 0,
+                    stride: BIG_STRIDE / 16,
+                    pass: 0,
                 })
             },
         });
@@ -229,6 +254,27 @@ impl TaskControlBlock {
         task_control_block
         // **** release child PCB
         // ---- release parent PCB
+    }
+
+    /// parent process spawn the child process
+    pub fn spawn(self: &Arc<Self>, elf_data: &[u8]) -> Arc<Self> {
+        // ---- access parent PCB exclusively
+        let task_control_block = Arc::new(TaskControlBlock::new(elf_data));
+
+        let mut child_inner = task_control_block.inner_exclusive_access();
+        let mut parent_inner = self.inner_exclusive_access();
+        parent_inner.children.push(task_control_block.clone());
+        child_inner.parent= Some(Arc::downgrade(self));
+
+        for fd in parent_inner.fd_table.iter() {
+            if let Some(file) = fd {
+                child_inner.fd_table.push(Some(file.clone()));
+            } else {
+                child_inner.fd_table.push(None);
+            }
+        }
+
+        task_control_block.clone()
     }
 
     /// get pid of process
