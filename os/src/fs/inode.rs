@@ -4,7 +4,7 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File, StatMode};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -52,6 +52,22 @@ impl OSInode {
         }
         v
     }
+
+    /// get block id and block offset
+    pub fn get_inode_id(&self) -> u32 {
+        let inner = self.inner.exclusive_access();
+        inner.inode.inode_id()
+    }
+
+    /// get inode type
+    pub fn get_inode_type(&self) -> StatMode {
+        let inner = self.inner.exclusive_access();
+        if inner.inode.gettype_id() == 1 {
+            StatMode::DIR
+        }else {
+            StatMode::FILE
+        }
+    }
 }
 
 lazy_static! {
@@ -59,6 +75,11 @@ lazy_static! {
         let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
         Arc::new(EasyFileSystem::root_inode(&efs))
     };
+}
+
+/// Get the root inode
+pub fn get_root_inode() -> Arc<Inode> {
+    ROOT_INODE.clone()
 }
 
 /// List all apps in the root directory
