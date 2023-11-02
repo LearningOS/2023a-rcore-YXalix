@@ -5,7 +5,9 @@ use super::{kstack_alloc, KernelStack, ProcessControlBlock, TaskContext};
 use crate::trap::TrapContext;
 use crate::{mm::PhysPageNum, sync::UPSafeCell};
 use alloc::sync::{Arc, Weak};
+use alloc::vec::Vec;
 use core::cell::RefMut;
+use alloc::vec;
 
 /// Task control block structure
 pub struct TaskControlBlock {
@@ -18,6 +20,11 @@ pub struct TaskControlBlock {
 }
 
 impl TaskControlBlock {
+    /// Get tid of current task
+    pub fn get_tid(&self) -> usize {
+        let inner = self.inner_exclusive_access();
+        inner.res.as_ref().unwrap().tid
+    }
     /// Get the mutable reference of the inner TCB
     pub fn inner_exclusive_access(&self) -> RefMut<'_, TaskControlBlockInner> {
         self.inner.exclusive_access()
@@ -41,9 +48,48 @@ pub struct TaskControlBlockInner {
     pub task_status: TaskStatus,
     /// It is set when active exit or execution error occurs
     pub exit_code: Option<i32>,
+
+    /// The allocation vec of mutex
+    pub alloc_vec_mutex: Vec<usize>,
+    /// The need vec of mutex
+    pub need_vec_mutex: Vec<usize>,
+    /// current mutex_id
+    pub mutex_id: usize,
+    /// current unlock mutex_id
+    pub unlock_mutex_id: usize,
+
+    /// The allocation vec of semaphore
+    pub alloc_vec_semaphore: Vec<usize>,
+    /// The need vec of semaphore
+    pub need_vec_semaphore: Vec<usize>,
+    /// current semaphore_id
+    pub semaphore_id: usize,
+    /// current unlock semaphore_id
+    pub unlock_semaphore_id: usize,
 }
 
 impl TaskControlBlockInner {
+
+    /// set the mutex_id
+    pub fn set_mutex_id(&mut self, mutex_id: usize) {
+        self.mutex_id = mutex_id;
+    }
+
+    /// set the unlock_mutex_id
+    pub fn set_unlock_mutex_id(&mut self, unlock_mutex_id: usize) {
+        self.unlock_mutex_id = unlock_mutex_id;
+    }
+
+    /// set the semaphore_id
+    pub fn set_semaphore_id(&mut self, semaphore_id: usize) {
+        self.semaphore_id = semaphore_id;
+    }
+
+    /// set the unlock_semaphore_id
+    pub fn set_up_semaphore_id(&mut self, unlock_semaphore_id: usize) {
+        self.unlock_semaphore_id = unlock_semaphore_id;
+    }
+
     pub fn get_trap_cx(&self) -> &'static mut TrapContext {
         self.trap_cx_ppn.get_mut()
     }
@@ -75,6 +121,14 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kstack_top),
                     task_status: TaskStatus::Ready,
                     exit_code: None,
+                    alloc_vec_mutex: vec![0;20],
+                    need_vec_mutex: vec![0;20],
+                    mutex_id: 0,
+                    unlock_mutex_id: 0,
+                    alloc_vec_semaphore: vec![0;20],
+                    need_vec_semaphore: vec![0;20],
+                    semaphore_id: 0,
+                    unlock_semaphore_id: 0,
                 })
             },
         }

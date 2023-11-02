@@ -49,9 +49,166 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+
+    /// enable dead lock detection
+    pub enable_deadlock_detection: bool,
+
+    /// mutex available vec
+    pub mutex_available_vec: Vec<usize>,
+
+    /// semaphore available vec
+    pub semaphore_available_vec: Vec<usize>,
 }
 
 impl ProcessControlBlockInner {
+    #[allow(unused)]
+    /// dead lock detection
+    pub fn deadlock_detection_mutex(&mut self,tid: usize, mutex_id: usize) -> bool {
+        if self.enable_deadlock_detection == false {
+            return true;
+        }
+        let mut work = self.mutex_available_vec.clone();
+        let t_len = self.tasks.len();
+        let mut finish = vec![false;t_len];
+        let mut count = 0;
+        let mut flag = true;
+        while flag {
+            flag = false;
+            for (i,task) in self.tasks.iter().enumerate() {
+                if !finish[i] {
+                    if let Some(task) = task {
+                        let mut task_inner = task.inner_exclusive_access();
+                        if i == tid {
+                            let mut k = 0;
+                            task_inner.need_vec_mutex[mutex_id] += 1;
+                            for res in 0..20 {
+                                if task_inner.need_vec_mutex[res] <= work[res] {
+                                    k += 1;
+                                }
+                            }
+                            task_inner.need_vec_mutex[mutex_id] -= 1;
+                            if k == 20 {
+                                for res in 0..20 {
+                                    work[res] += task_inner.alloc_vec_mutex[res];
+                                }
+                                finish[i] = true;
+                                flag = true;
+                                count += 1;
+                            }
+                        } else {
+                            let mut k = 0;
+                            for res in 0..20 {
+                                if task_inner.need_vec_mutex[res] <= work[res] {
+                                    k += 1;
+                                }
+                            }
+                            if k == 20 {
+                                for res in 0..20 {
+                                    work[res] += task_inner.alloc_vec_mutex[res];
+                                }
+                                finish[i] = true;
+                                flag = true;
+                                count += 1;
+                            }
+                        }
+                    } else {
+                        count += 1;
+                        finish[i] = true;
+                        flag = true;
+                    }
+                }
+            }
+        }
+        if count == t_len {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    #[allow(unused)]
+    /// dead lock detection
+    pub fn deadlock_detection_semaphore(&mut self,tid: usize, semaphore_id: usize) -> bool {
+        if self.enable_deadlock_detection == false {
+            return true;
+        }
+        let mut work = self.semaphore_available_vec.clone();
+        let t_len = self.tasks.len();
+        let mut finish = vec![false;t_len];
+        let mut count = 0;
+        let mut flag = true;
+        println!("---------------detect semaphore deadlock start----------------");
+        println!("\x1b[32m tid: {} semaphore_id: {} task_len: {}  works: \x1b[0m",tid, semaphore_id,t_len);
+        for i in &work {
+            print!("\x1b[32m{} \x1b[0m",i);
+        }
+        while flag {
+            flag = false;
+            for (i,task) in self.tasks.iter().enumerate() {
+                if !finish[i] {
+                    if let Some(task) = task {
+                        let mut task_inner = task.inner_exclusive_access();
+                        println!("\n \x1b[32m task[{}] alloc_vec_semaphore: \x1b[0m",i);
+                        for num in task_inner.alloc_vec_semaphore.iter() {
+                            print!("\x1b[32m{} \x1b[0m",num);
+                        }
+                        println!("\n\x1b[32m task[{}] need_vec_semaphore: \x1b[0m",i);
+                        for num in task_inner.need_vec_semaphore.iter() {
+                            print!("\x1b[32m{} \x1b[0m",num);
+                        }
+                        if i == tid {
+                            let mut k = 0;
+                            task_inner.need_vec_semaphore[semaphore_id] += 1;
+                            for res in 0..20 {
+                                if task_inner.need_vec_semaphore[res] <= work[res] {
+                                    k += 1;
+                                }
+                            }
+                            task_inner.need_vec_semaphore[semaphore_id] -= 1;
+                            if k == 20 {
+                                for res in 0..20 {
+                                    work[res] += task_inner.alloc_vec_semaphore[res];
+                                }
+                                finish[i] = true;
+                                flag = true;
+                                count += 1;
+                            }
+                        } else {
+                            let mut k = 0;
+                            for res in 0..20 {
+                                if task_inner.need_vec_semaphore[res] <= work[res] {
+                                    k += 1;
+                                }
+                            }
+                            if k == 20 {
+                                for res in 0..20 {
+                                    work[res] += task_inner.alloc_vec_semaphore[res];
+                                }
+                                finish[i] = true;
+                                flag = true;
+                                count += 1;
+                            }
+                        }
+                    } else {
+                        count += 1;
+                        finish[i] = true;
+                        flag = true;
+                    }
+                    if flag {
+                        print!("\n\x1b[32m task[{}] finish\x1b[0m",i);
+                    }
+                }
+            }
+        }
+        println!("\ncount: {} t_len: {}",count,t_len);
+        println!("---------------detect semaphore deadlock end----------------");
+        if count == t_len {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     #[allow(unused)]
     /// get the address of app's page table
     pub fn get_user_token(&self) -> usize {
@@ -119,6 +276,9 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    enable_deadlock_detection: false,
+                    mutex_available_vec: vec![0;20],
+                    semaphore_available_vec: vec![0;20],
                 })
             },
         });
@@ -245,6 +405,9 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    enable_deadlock_detection: false,
+                    mutex_available_vec: vec![0;20],
+                    semaphore_available_vec: vec![0;20],
                 })
             },
         });
