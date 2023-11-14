@@ -10,6 +10,8 @@
 //! `sys_` then the name of the syscall. You can find functions like this in
 //! submodules, and you should also implement syscalls this way.
 
+/// IO control syscall
+pub const SYSCALL_IOCTL: usize = 29;
 /// openat syscall
 pub const SYSCALL_OPENAT: usize = 56;
 /// close syscall
@@ -18,6 +20,8 @@ pub const SYSCALL_CLOSE: usize = 57;
 pub const SYSCALL_READ: usize = 63;
 /// write syscall
 pub const SYSCALL_WRITE: usize = 64;
+/// writev syscall
+pub const SYSCALL_WRITEV: usize = 66;
 /// unlinkat syscall
 pub const SYSCALL_UNLINKAT: usize = 35;
 /// linkat syscall
@@ -26,6 +30,10 @@ pub const SYSCALL_LINKAT: usize = 37;
 pub const SYSCALL_FSTAT: usize = 80;
 /// exit syscall
 pub const SYSCALL_EXIT: usize = 93;
+/// exitgroup syscall
+pub const SYSCALL_EXIT_GROUP: usize = 94;
+/// set_tid_address syscall
+pub const SYSCALL_SET_TID_ADDRESS: usize = 96;
 /// sleep syscall
 pub const SYSCALL_SLEEP: usize = 101;
 /// yield syscall
@@ -111,6 +119,8 @@ use process::*;
 use sync::*;
 use thread::*;
 
+use crate::fs::Iovec;
+
 use crate::fs::Stat;
 
 /// handle syscall exception with `syscall_id` and other arguments
@@ -152,6 +162,10 @@ pub fn syscall(syscall_id: usize, args: [usize; 4]) -> isize {
         SYSCALL_CONDVAR_SIGNAL => sys_condvar_signal(args[0]),
         SYSCALL_CONDVAR_WAIT => sys_condvar_wait(args[0], args[1]),
         SYSCALL_KILL => sys_kill(args[0], args[1] as u32),
+        SYSCALL_SET_TID_ADDRESS => sys_getpid(),
+        SYSCALL_IOCTL => 0,
+        SYSCALL_WRITEV => sys_writev(args[0], args[1] as *const Iovec, args[2]),
+        SYSCALL_EXIT_GROUP => 0,
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }

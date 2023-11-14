@@ -49,4 +49,4 @@ bitflags! {
 
 pub use inode::{list_apps, open_file, OSInode, OpenFlags};
 pub use pipe::{make_pipe, Pipe};
-pub use stdio::{Stdin, Stdout};
+pub use stdio::{Stdin, Stdout, Iovec};

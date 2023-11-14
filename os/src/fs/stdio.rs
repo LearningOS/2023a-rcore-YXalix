@@ -9,6 +9,15 @@ pub struct Stdin;
 /// stdout file for putting chars to console
 pub struct Stdout;
 
+/// iovec
+pub struct Iovec {
+    /// starting address
+    pub iov_base: *const u8,
+    /// length in bytes
+    pub iov_len: usize,
+}
+
+
 impl File for Stdin {
     fn readable(&self) -> bool {
         true

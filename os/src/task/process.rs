@@ -6,7 +6,8 @@ use super::TaskControlBlock;
 use super::{add_task, SignalFlags};
 use super::{pid_alloc, PidHandle};
 use crate::fs::{File, Stdin, Stdout};
-use crate::mm::{translated_refmut, MemorySet, KERNEL_SPACE};
+use crate::loaders::ElfLoader;
+use crate::mm::{MemorySet, KERNEL_SPACE};
 use crate::sync::{Condvar, Mutex, Semaphore, UPSafeCell};
 use crate::trap::{trap_handler, TrapContext};
 use alloc::string::String;
@@ -333,40 +334,42 @@ impl ProcessControlBlock {
         // push arguments on user stack
         trace!("kernel: exec .. push arguments on user stack");
         let mut user_sp = task_inner.res.as_mut().unwrap().ustack_top();
-
-        let mut len = (args.len() + 2) * core::mem::size_of::<usize>();
-        for i in 0..args.len() {
-            len += args[i].len() + 1;
-        }
-        user_sp -= len;
+        let args_len = args.len();
+        let loader = ElfLoader::new(elf_data).unwrap();
+        user_sp = loader.init_stack(new_token, user_sp, args);
+        // let mut len = (args.len() + 2) * core::mem::size_of::<usize>();
+        // for i in 0..args.len() {
+        //     len += args[i].len() + 1;
+        // }
+        // user_sp -= len;
         // make the user_sp aligned to 8B for k210 platform
-        user_sp -= user_sp % core::mem::size_of::<usize>();
-        let mut s0 = user_sp;
+        // user_sp -= user_sp % core::mem::size_of::<usize>();
+        // let mut s0 = user_sp;
         // push args len on user stack
-        *translated_refmut(new_token, s0 as *mut usize) = args.len();
-        s0 += core::mem::size_of::<usize>();
+        // *translated_refmut(new_token, s0 as *mut usize) = args.len();
+        // s0 += core::mem::size_of::<usize>();
         // push args on user stack
-        let argv_base = s0;
-        let mut argv: Vec<_> = (0..=args.len())
-            .map(|arg| {
-                translated_refmut(
-                    new_token,
-                    (argv_base + arg * core::mem::size_of::<usize>()) as *mut usize,
-                )
-            })
-            .collect();
-        *argv[args.len()] = 0;
-        s0 += (args.len() + 1) * core::mem::size_of::<usize>();
-        for i in 0..args.len() {
-            *argv[i] = s0;
-            let mut p = s0;
-            for c in args[i].as_bytes() {
-                *translated_refmut(new_token, p as *mut u8) = *c;
-                p += 1;
-            }
-            *translated_refmut(new_token, p as *mut u8) = 0;
-            s0 = p + 1;
-        }
+        // let argv_base = s0;
+        // let mut argv: Vec<_> = (0..=args.len())
+        //     .map(|arg| {
+        //         translated_refmut(
+        //             new_token,
+        //             (argv_base + arg * core::mem::size_of::<usize>()) as *mut usize,
+        //         )
+        //     })
+        //     .collect();
+        // *argv[args.len()] = 0;
+        // s0 += (args.len() + 1) * core::mem::size_of::<usize>();
+        // for i in 0..args.len() {
+        //     *argv[i] = s0;
+        //     let mut p = s0;
+        //     for c in args[i].as_bytes() {
+        //         *translated_refmut(new_token, p as *mut u8) = *c;
+        //         p += 1;
+        //     }
+        //     *translated_refmut(new_token, p as *mut u8) = 0;
+        //     s0 = p + 1;
+        // }
         // make the user_sp aligned to 8B for k210 platform
         // user_sp -= user_sp % core::mem::size_of::<usize>();
         // initialize trap_cx
@@ -378,8 +381,8 @@ impl ProcessControlBlock {
             task.kstack.get_top(),
             trap_handler as usize,
         );
-        trap_cx.x[10] = args.len();
-        trap_cx.x[11] = argv_base;
+        trap_cx.x[10] = args_len;
+        trap_cx.x[11] = user_sp + 8;
         *task_inner.get_trap_cx() = trap_cx;
     }
 
