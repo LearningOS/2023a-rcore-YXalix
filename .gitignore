@@ -15,7 +15,16 @@ easy-fs/Cargo.lock
 easy-fs/target/*
 easy-fs-fuse/Cargo.lock
 easy-fs-fuse/target/*
+libvfs/Cargo.lock
+libvfs/target/*
+ramfs/Cargo.lock
+ramfs/target/*
+rust-fatfs/Cargo.lock
+rust-fatfs/target/*
 tools/
 pushall.sh
 .vscode/*.log
 *.bak
+myfat/target/*
+myfat/Cargo.lock
+

@@ -34,7 +34,7 @@ DISASM ?= -x
 # Run usertests or usershell
 TEST ?=
 
-build: env $(KERNEL_BIN) fs-img 
+build: env $(KERNEL_BIN) fat-img
 
 env:
 	(rustup target list | grep "riscv64gc-unknown-none-elf (installed)") || rustup target add $(TARGET)
@@ -51,6 +51,20 @@ fs-img: $(APPS)
 	@rm -f $(FS_IMG)
 	@cp ../user/build/elf/* ../testcases/build/
 	@cd ../easy-fs-fuse && cargo run --release -- -s ../testcases/build/ -t ../os/target/
+
+fat-img:
+	@make -C ../user build TEST=$(TEST) CHAPTER=$(CHAPTER) BASE=$(BASE)
+	@make -C ../testcases build
+	@rm -f $(FS_IMG)
+	@cp ../user/build/elf/* ../testcases/build/
+	-mkdir temp
+	sudo mount ../os/fs.img temp
+	sudo rm -rf ../os/temp/*
+	-sudo cp -r -a ../testcases/build/* ../os/temp/
+	sudo umount ../os/fs.img
+	rmdir ../os/temp
+	cp ../os/fs.img ../os/target/
+
 
 kernel:
 	@echo Platform: $(BOARD)

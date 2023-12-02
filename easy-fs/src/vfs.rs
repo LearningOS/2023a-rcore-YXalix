@@ -10,6 +10,7 @@ use super::{
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use libvfs::VfsInode;
 use spin::{Mutex, MutexGuard};
 
 /// Inode struct in memory
@@ -70,21 +71,7 @@ impl Inode {
         }
         None
     }
-    /// find the disk inode of the file with 'name'
-    pub fn find(&self, name: &str) -> Option<Arc<Inode>> {
-        let fs = self.fs.lock();
-        self.read_disk_inode(|disk_inode| {
-            self.find_inode_id(name, disk_inode).map(|inode_id| {
-                let (block_id, block_offset) = fs.get_disk_inode_pos(inode_id);
-                Arc::new(Self::new(
-                    block_id,
-                    block_offset,
-                    self.fs.clone(),
-                    self.block_device.clone(),
-                ))
-            })
-        })
-    }
+
     /// increase the size of file( also known as 'disk inode')
     fn increase_size(
         &self,
@@ -102,8 +89,26 @@ impl Inode {
         }
         disk_inode.increase_size(new_size, v, &self.block_device);
     }
+}
+
+impl VfsInode for Inode {
+    /// find the disk inode of the file with 'name'
+    fn find(&self, name: &str) -> Option<Arc<dyn VfsInode>> {
+        let fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode| {
+            self.find_inode_id(name, disk_inode).map(|inode_id| {
+                let (block_id, block_offset) = fs.get_disk_inode_pos(inode_id);
+                Arc::new(Self::new(
+                    block_id,
+                    block_offset,
+                    self.fs.clone(),
+                    self.block_device.clone(),
+                )) as Arc<dyn VfsInode>
+            })
+        })
+    }
     /// create a file with 'name' in the root directory
-    pub fn create(&self, name: &str) -> Option<Arc<Inode>> {
+    fn create(&self, name: &str) -> Option<Arc<dyn VfsInode>> {
         let mut fs = self.fs.lock();
         let op = |root_inode: &mut DiskInode| {
             // assert it is a directory
@@ -150,10 +155,11 @@ impl Inode {
         )))
         // release efs lock automatically by compiler
     }
+
     /// create a directory with 'name' in the root directory
     ///
     /// list the file names in the root directory
-    pub fn ls(&self) -> Vec<String> {
+    fn ls(&self) -> Vec<String> {
         let _fs = self.fs.lock();
         self.read_disk_inode(|disk_inode| {
             let file_count = (disk_inode.size as usize) / DIRENT_SZ;
@@ -170,12 +176,12 @@ impl Inode {
         })
     }
     /// Read the content in offset position of the file into 'buf'
-    pub fn read_at(&self, offset: usize, buf: &mut [u8]) -> usize {
+    fn read_at(&self, offset: usize, buf: &mut [u8]) -> usize {
         let _fs = self.fs.lock();
         self.read_disk_inode(|disk_inode| disk_inode.read_at(offset, buf, &self.block_device))
     }
     /// Write the content in 'buf' into offset position of the file
-    pub fn write_at(&self, offset: usize, buf: &[u8]) -> usize {
+    fn write_at(&self, offset: usize, buf: &[u8]) -> usize {
         let mut fs = self.fs.lock();
         let size = self.modify_disk_inode(|disk_inode| {
             self.increase_size((offset + buf.len()) as u32, disk_inode, &mut fs);
@@ -185,7 +191,7 @@ impl Inode {
         size
     }
     /// Set the file(disk inode) length to zero, delloc all data blocks of the file.
-    pub fn clear(&self) {
+    fn clear(&self) {
         let mut fs = self.fs.lock();
         self.modify_disk_inode(|disk_inode| {
             let size = disk_inode.size;

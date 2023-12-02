@@ -5,8 +5,12 @@ use crate::sync::UPSafeCell;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use bitflags::*;
-use easy_fs::{EasyFileSystem, Inode};
+// use easy_fs::EasyFileSystem;
 use lazy_static::*;
+use libvfs::VfsInode;
+
+use myfat::init_filesystems;
+
 
 /// inode in memory
 pub struct OSInode {
@@ -17,12 +21,13 @@ pub struct OSInode {
 /// inner of inode in memory
 pub struct OSInodeInner {
     offset: usize,
-    inode: Arc<Inode>,
+    inode: Arc<dyn VfsInode>,
 }
+
 
 impl OSInode {
     /// create a new inode in memory
-    pub fn new(readable: bool, writable: bool, inode: Arc<Inode>) -> Self {
+    pub fn new(readable: bool, writable: bool, inode: Arc<dyn VfsInode>) -> Self {
         trace!("kernel: OSInode::new");
         Self {
             readable,
@@ -49,9 +54,10 @@ impl OSInode {
 }
 
 lazy_static! {
-    pub static ref ROOT_INODE: Arc<Inode> = {
-        let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
-        Arc::new(EasyFileSystem::root_inode(&efs))
+    pub static ref ROOT_INODE: Arc<dyn VfsInode> = {
+        // let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
+        // Arc::new(EasyFileSystem::root_inode(&efs))
+        init_filesystems(BLOCK_DEVICE.clone())
     };
 }
 
