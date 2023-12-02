@@ -16,6 +16,8 @@
 	- `lib.rs`：crate主体，提供`init_filesystems`函数用于初始化文件系统，并返回`Arc<dyn VfsInode> 形式的 root_inode`
 	- `root.rs`：提供被`init_filesystems`函数调用的`init_rootfs`函数
 	- `vfs.rs`：分别为`FileWrapper<'static>`以及`DirWrapper<'static>`实现 `trait VfsInode`, 值得注意的是，在实现`find`的时候需要注意文件扩展名，是否有`.elf`
+5. 生成`.img`文件
+在`os/makefile`里面写对应的脚本，将原先生成的空的`fs.img`, 然后用本机的文件系统将测例全部装进`fs.img`中，并放到`os/target/`下。
 
 很多功能由于在实际测试中并不会被用到，所以在实现的时候进行了大量的删减，只保留了所需的部分。
 最终实现效果如下：
